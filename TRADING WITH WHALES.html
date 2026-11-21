@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0d1117">
+    <title>BTC Terminal — Live Chart, Heatmap, Large Trades & Macro Calendar</title>
+
+    <script>
+        (function() {
+            try {
+                var saved = localStorage.getItem('btc-terminal-theme');
+                if (!saved) saved = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', saved);
+            } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+        })();
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+
+        :root {
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-display: 'Space Grotesk', 'Inter', sans-serif;
+            --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+            --fs-xs: 0.6875rem; --fs-sm: 0.75rem; --fs-base: 0.8125rem;
+            --fs-md: 0.875rem; --fs-lg: 1rem; --fs-xl: 1.25rem;
+            --bg-root: #07090d; --bg-panel: #0d1117; --bg-elevated: #131822; --bg-hover: #1a2030;
+            --border-subtle: #1c2333; --border-strong: #2d3748;
+            --text-primary: #e6edf3; --text-secondary: #8b949e; --text-muted: #5c6570;
+            --accent-cyan: #00d4ff; --accent-blue: #58a6ff; --accent-green: #3fb950;
+            --accent-red: #f85149; --accent-amber: #d29922; --accent-purple: #a371f7;
+            --shadow-panel: 0 2px 8px rgba(0, 0, 0, 0.35);
+            --row-hover: rgba(88, 166, 255, 0.03);
+        }
+
+        html[data-theme="light"] {
+            --bg-root: #eef1f5; --bg-panel: #ffffff; --bg-elevated: #f6f8fa; --bg-hover: #eaeef3;
+            --border-subtle: #d8dde3; --border-strong: #b8c0ca;
+            --text-primary: #0f172a; --text-secondary: #475569; --text-muted: #94a3b8;
+            --accent-cyan: #0284c7; --accent-blue: #2563eb; --accent-green: #15803d;
+            --accent-red: #dc2626; --accent-amber: #c2740a; --accent-purple: #7c3aed;
+            --shadow-panel: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+            --row-hover: rgba(37, 99, 235, 0.04);
+        }
+
+        body {
+            font-family: var(--font-sans); font-size: var(--fs-md); line-height: 1.5;
+            letter-spacing: -0.006em; -webkit-font-smoothing: antialiased;
+            -webkit-text-size-adjust: 100%;
+            -webkit-tap-highlight-color: transparent;
+            background: var(--bg-root); color: var(--text-primary);
+            min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+            padding-bottom: 0; overflow-x: hidden;
+            transition: background-color 0.35s ease, color 0.35s ease;
+        }
+
+        button, .icon-btn, .notes-tab { touch-action: manipulation; }
+        button:focus-visible, input:focus-visible, .notes-tab:focus-visible, .news-item:focus-visible {
+            outline: 2px solid var(--accent-cyan);
+            outline-offset: 2px;
+        }
+
+        .ticker-bar {
+            width: 100%; background: var(--bg-panel); border-bottom: 1px solid var(--border-subtle);
+            padding: 0 24px; display: flex; align-items: center; height: 44px;
+            position: sticky; top: 0; z-index: 20; overflow-x: auto; scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+            transition: background-color 0.35s ease, border-color 0.35s ease;
+        }
+        .ticker-bar::-webkit-scrollbar { display: none; }
+        .ticker-item {
+            display: flex; align-items: center; gap: 8px; padding: 0 18px;
+            border-right: 1px solid var(--border-subtle); white-space: nowrap;
+            font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 500;
+            color: var(--text-secondary); flex-shrink: 0;
+        }
+        .ticker-item:last-child { border-right: none; }
+        .ticker-item .label {
+            font-family: var(--font-sans); font-size: var(--fs-xs); font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted);
+        }
+        .ticker-item .value {
+            font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums;
+            transition: color 0.35s ease;
+        }
+        .ticker-item .value.up { color: var(--accent-green); }
+        .ticker-item .value.down { color: var(--accent-red); }
+        .ticker-item .value.accent { color: var(--accent-cyan); }
+        .source-badge {
+            font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.04em;
+            padding: 1px 5px; border-radius: 3px; background: rgba(0, 212, 255, 0.08);
+            color: var(--accent-cyan); border: 1px solid rgba(0, 212, 255, 0.18); margin-left: 4px;
+        }
+        html[data-theme="light"] .source-badge {
+            background: rgba(2, 132, 199, 0.08); border-color: rgba(2, 132, 199, 0.25);
+        }
+        .flash-up { animation: flash-up 0.7s ease; }
+        .flash-down { animation: flash-down 0.7s ease; }
+        @keyframes flash-up { 0% { background: rgba(63,185,80,0.3); } 100% { background: transparent; } }
+        @keyframes flash-down { 0% { background: rgba(248,81,73,0.3); } 100% { background: transparent; } }
+
+        header {
+            width: 100%; max-width: 1560px; padding: 18px 28px 10px;
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 16px; flex-shrink: 0; flex-wrap: wrap;
+        }
+        .header-left { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        header h1 {
+            font-family: var(--font-display); font-size: clamp(1rem, 1.6vw, 1.35rem);
+            font-weight: 700; letter-spacing: -0.03em; color: var(--text-primary);
+            display: flex; align-items: center; gap: 10px; transition: color 0.35s ease;
+        }
+        header h1 .brand-mark { font-family: var(--font-mono); font-weight: 700; color: #f7931a; font-size: 1.2em; }
+        .user-badge {
+            font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 500;
+            color: var(--text-muted); background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+            padding: 4px 10px; border-radius: 6px; letter-spacing: 0.02em;
+            transition: background-color 0.35s ease, border-color 0.35s ease, color 0.35s ease;
+        }
+        .user-badge .user-highlight { color: var(--accent-cyan); font-weight: 600; }
+        html[data-theme="light"] .user-badge .user-highlight { color: var(--accent-blue); }
+        .header-right { display: flex; align-items: center; gap: 10px; }
+        .header-meta {
+            font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-muted);
+            letter-spacing: 0; text-align: right; line-height: 1.6; margin-right: 4px;
+        }
+        .header-meta .live-dot {
+            display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+            background: var(--accent-green); margin-right: 6px;
+            box-shadow: 0 0 8px rgba(63, 185, 80, 0.5); animation: pulse-dot 2s infinite;
+        }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+        .icon-btn {
+            background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+            border-radius: 8px; padding: 7px 10px; cursor: pointer; color: var(--text-secondary);
+            display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-sans);
+            font-size: var(--fs-sm); font-weight: 600; transition: all 0.2s ease;
+            height: 38px; min-width: 38px; justify-content: center;
+        }
+        .icon-btn:hover { border-color: var(--border-strong); color: var(--text-primary); background: var(--bg-hover); }
+        .icon-btn:active { transform: scale(0.97); }
+        .icon-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+        html[data-theme="light"] .theme-toggle .icon-moon { display: none; }
+        html[data-theme="dark"] .theme-toggle .icon-sun { display: none; }
+
+        .dashboard {
+            width: 100%; max-width: 1560px; padding: 0 28px;
+            display: flex; flex-direction: column; gap: 20px;
+        }
+        .panel {
+            background: var(--bg-panel); border: 1px solid var(--border-subtle);
+            border-radius: 12px; overflow: hidden; box-shadow: var(--shadow-panel);
+            transition: background-color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+        }
+        .panel:hover { border-color: var(--border-strong); }
+        .panel-header {
+            padding: 12px 18px; background: var(--bg-elevated);
+            font-family: var(--font-display); font-size: var(--fs-sm); font-weight: 600;
+            letter-spacing: 0.02em; text-transform: uppercase; border-bottom: 1px solid var(--border-subtle);
+            color: var(--text-secondary); display: flex; justify-content: space-between;
+            align-items: center; gap: 12px; flex-shrink: 0; flex-wrap: wrap;
+            transition: background-color 0.35s ease, border-color 0.35s ease, color 0.35s ease;
+        }
+        .panel-header .badge {
+            font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+            letter-spacing: 0.04em; padding: 2px 8px; border-radius: 4px;
+            background: rgba(0, 212, 255, 0.08); color: var(--accent-cyan);
+            border: 1px solid rgba(0, 212, 255, 0.18); white-space: nowrap;
+        }
+        html[data-theme="light"] .panel-header .badge {
+            background: rgba(2, 132, 199, 0.08); border-color: rgba(2, 132, 199, 0.25);
+            color: var(--accent-blue);
+        }
+        .panel-header-actions {
+            display: flex; align-items: center; gap: 8px;
+        }
+        .panel-icon-btn {
+            background: var(--bg-panel); border: 1px solid var(--border-subtle);
+            height: 26px; min-width: 26px; padding: 0; border-radius: 6px;
+            display: inline-flex; align-items: center; justify-content: center;
+            cursor: pointer; color: var(--text-secondary); transition: all 0.15s ease;
+            font-family: var(--font-sans);
+        }
+        .panel-icon-btn:hover {
+            border-color: var(--border-strong); color: var(--text-primary);
+            background: var(--bg-hover);
+        }
+        .panel-icon-btn:active { transform: scale(0.94); }
+        .panel-icon-btn svg { width: 14px; height: 14px; }
+
+        .pulse-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px; margin-bottom: 4px;
+        }
+        .pulse-card {
+            background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: 10px;
+            padding: 16px 18px; display: flex; flex-direction: column; gap: 6px;
+            transition: background-color 0.35s ease, border-color 0.35s ease;
+            position: relative; overflow: hidden;
+        }
+        .pulse-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+            opacity: 0; transition: opacity 0.25s ease;
+        }
+        .pulse-card:hover { border-color: var(--border-strong); background: var(--bg-elevated); }
+        .pulse-card:hover::before { opacity: 1; }
+        .pulse-card .pulse-label {
+            font-family: var(--font-sans); font-size: var(--fs-xs); font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted);
+        }
+        .pulse-card .pulse-value {
+            font-family: var(--font-mono); font-size: 1.45rem; font-weight: 600;
+            letter-spacing: -0.03em; font-variant-numeric: tabular-nums;
+            color: var(--text-primary); line-height: 1.2; transition: color 0.35s ease;
+        }
+        .pulse-card .pulse-sub {
+            font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 500;
+            color: var(--text-secondary);
+        }
+        .pulse-card .pulse-sub.positive { color: var(--accent-green); }
+        .pulse-card .pulse-sub.negative { color: var(--accent-red); }
+        .fg-gauge-wrap { display: flex; align-items: center; gap: 12px; }
+        .fg-bar {
+            flex: 1; height: 8px; border-radius: 4px;
+            background: linear-gradient(90deg, #f85149 0%, #d29922 40%, #3fb950 70%, #00d4ff 100%);
+            position: relative;
+        }
+        .fg-indicator {
+            position: absolute; top: 50%; transform: translate(-50%, -50%);
+            width: 14px; height: 14px; border-radius: 50%; background: #fff;
+            border: 2px solid var(--bg-root);
+            box-shadow: 0 0 0 2px rgba(255,255,255,0.15), 0 0 12px rgba(255,255,255,0.3);
+            transition: left 1s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.35s ease; z-index: 2;
+        }
+        .fg-value-big { font-family: var(--font-mono); font-size: 1.3rem; font-weight: 700; min-width: 36px; text-align: right; }
+
+        .chart-row { display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: stretch; }
+        .chart-wrapper { height: 560px; display: flex; flex-direction: column; position: relative; }
+        .chart-wrapper .tradingview-widget-container {
+            flex: 1; min-height: 0; width: 100%; position: relative;
+        }
+        .chart-wrapper .tradingview-widget-container__widget {
+            width: 100%; height: 100%; position: relative;
+        }
+        .chart-wrapper .tradingview-widget-container iframe {
+            width: 100% !important; height: 100% !important; border: 0; display: block;
+            position: absolute; top: 0; left: 0;
+        }
+        .tradingview-widget-copyright {
+            font-family: var(--font-sans); font-size: var(--fs-xs); text-align: center;
+            padding: 6px 0; background: var(--bg-elevated); border-top: 1px solid var(--border-subtle);
+            color: var(--text-muted); transition: background-color 0.35s ease; flex-shrink: 0;
+        }
+        .tradingview-widget-copyright a { color: var(--accent-blue); text-decoration: none; }
+
+        .sidebar-stack { display: flex; flex-direction: column; gap: 20px; height: 100%; }
+        .derivatives-widget { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+        .derivatives-body {
+            flex: 1; padding: 14px 18px; display: flex; flex-direction: column;
+            gap: 12px; justify-content: center; min-height: 0;
+        }
+        .metric-row {
+            display: flex; justify-content: space-between; align-items: center;
+            font-family: var(--font-mono); font-size: var(--fs-sm); padding: 6px 0;
+            border-bottom: 1px solid var(--border-subtle); transition: border-color 0.35s ease;
+            gap: 8px; flex-wrap: wrap;
+        }
+        .metric-row:last-child { border-bottom: none; }
+        .metric-row .metric-name { font-family: var(--font-sans); font-weight: 500; color: var(--text-secondary); }
+        .metric-row .metric-val { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+        .metric-row .metric-val.green { color: var(--accent-green); }
+        .metric-row .metric-val.red { color: var(--accent-red); }
+
+        .news-widget { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+        .news-feed {
+            flex: 1; overflow-y: auto; min-height: 0;
+            scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent;
+            -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+        }
+        .news-feed::-webkit-scrollbar { width: 4px; }
+        .news-feed::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+        .news-item {
+            display: block; padding: 10px 16px; border-bottom: 1px solid var(--border-subtle);
+            text-decoration: none; transition: background-color 0.15s ease;
+        }
+        .news-item:hover { background: var(--bg-hover); }
+        .news-item .news-title {
+            font-family: var(--font-sans); font-size: var(--fs-sm); font-weight: 500;
+            color: var(--text-primary); line-height: 1.35; margin-bottom: 3px;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+            overflow: hidden; transition: color 0.35s ease;
+        }
+        .news-item .news-meta { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); display: flex; gap: 10px; flex-wrap: wrap; }
+        .news-item .news-source { color: var(--accent-blue); font-weight: 500; }
+
+        .tools-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+
+        .sessions-body { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+        .session-item {
+            display: flex; justify-content: space-between; align-items: center; gap: 10px;
+            padding: 9px 12px; background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+            border-radius: 8px; transition: all 0.3s ease; flex-wrap: wrap;
+        }
+        .session-item.open {
+            border-color: rgba(63, 185, 80, 0.4); background: rgba(63, 185, 80, 0.06);
+        }
+        html[data-theme="light"] .session-item.open {
+            border-color: rgba(21, 128, 61, 0.4); background: rgba(21, 128, 61, 0.06);
+        }
+        .session-name { font-family: var(--font-sans); font-weight: 600; font-size: var(--fs-sm); color: var(--text-primary); }
+        .session-time { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+        .session-status { font-family: var(--font-mono); font-size: 11px; font-weight: 600; text-align: right; }
+        .session-status.open { color: var(--accent-green); }
+        .session-status.closed { color: var(--text-muted); }
+
+        .calc-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+        .calc-field { display: flex; flex-direction: column; gap: 4px; }
+        .calc-field label {
+            font-family: var(--font-sans); font-size: 10px; color: var(--text-muted);
+            text-transform: uppercase; font-weight: 600; letter-spacing: 0.06em;
+        }
+        .calc-field input {
+            background: var(--bg-root); border: 1px solid var(--border-subtle); border-radius: 6px;
+            padding: 9px 12px; color: var(--text-primary); font-family: var(--font-mono);
+            font-size: var(--fs-sm); outline: none; transition: border-color 0.15s ease;
+            width: 100%; min-height: 40px;
+        }
+        .calc-field input:focus { border-color: var(--accent-cyan); }
+        .calc-results {
+            padding: 10px 12px; background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+            border-radius: 8px; display: flex; flex-direction: column; gap: 6px; margin-top: 4px;
+        }
+        .calc-res-row { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: var(--fs-sm); gap: 8px; flex-wrap: wrap; }
+        .calc-res-row .lbl { color: var(--text-secondary); }
+        .calc-res-row .val { font-weight: 700; color: var(--accent-cyan); text-align: right; }
+        .calc-res-row .val.red { color: var(--accent-red); }
+
+        .technical-analysis-panel { display: flex; flex-direction: column; min-height: 0; }
+        .technical-analysis-container {
+            flex: 1; min-height: 320px; width: 100%; position: relative; padding: 8px 0;
+        }
+        .technical-analysis-container iframe {
+            width: 100% !important; height: 100% !important; border: 0;
+        }
+
+        .bottom-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .trade-panel { height: 400px; display: flex; flex-direction: column; }
+        .trade-feed-status {
+            padding: 8px 18px; background: var(--bg-root); border-bottom: 1px solid var(--border-subtle);
+            font-family: var(--font-sans); font-size: var(--fs-sm); font-weight: 500;
+            color: var(--text-secondary); display: flex; justify-content: space-between;
+            align-items: center; gap: 12px; flex-shrink: 0; flex-wrap: wrap;
+            transition: background-color 0.35s ease, border-color 0.35s ease;
+        }
+        .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); margin-right: 8px; vertical-align: middle; }
+        .dot.connected { background: var(--accent-green); box-shadow: 0 0 0 2px rgba(63,185,80,0.15), 0 0 8px rgba(63,185,80,0.4); }
+        .dot.connecting { background: var(--accent-amber); box-shadow: 0 0 0 2px rgba(210,153,34,0.15); }
+        .dot.disconnected { background: var(--accent-red); box-shadow: 0 0 0 2px rgba(248,81,73,0.15); }
+
+        .trade-feed {
+            flex: 1; min-height: 0; overflow-y: auto; font-family: var(--font-mono);
+            font-size: var(--fs-sm); font-variant-numeric: tabular-nums; line-height: 1.45;
+            scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent;
+            -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+        }
+        .trade-feed::-webkit-scrollbar { width: 4px; }
+        .trade-feed::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+        .trade-row {
+            display: grid; grid-template-columns: 82px 50px minmax(90px,1fr) minmax(80px,1fr) minmax(100px,1fr);
+            gap: 8px; padding: 7px 18px; border-bottom: 1px solid var(--border-subtle);
+            align-items: center; color: var(--text-primary); transition: background-color 0.15s ease;
+        }
+        .trade-row:not(.header):hover { background: var(--row-hover); }
+        .trade-row.header {
+            position: sticky; top: 0; background: var(--bg-elevated); color: var(--text-muted);
+            font-family: var(--font-sans); font-size: var(--fs-xs); font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.06em; z-index: 1;
+            border-bottom: 1px solid var(--border-subtle); transition: background-color 0.35s ease;
+        }
+        .trade-row > span:nth-child(3), .trade-row > span:nth-child(5) { text-align: right; }
+        .trade-row.header > span:nth-child(3), .trade-row.header > span:nth-child(5) { text-align: right; }
+        .side-buy { color: var(--accent-green); font-weight: 600; }
+        .side-sell { color: var(--accent-red); font-weight: 600; }
+        .trade-feed-empty { padding: 24px 18px; color: var(--text-muted); text-align: center; font-family: var(--font-sans); font-size: var(--fs-base); }
+
+        .calendar-panel { height: 400px; display: flex; flex-direction: column; }
+        .calendar-widget-container { flex: 1; min-height: 0; width: 100%; position: relative; }
+        .calendar-widget-container iframe { width: 100%; height: 100%; border: none; display: block; position: absolute; top: 0; left: 0; }
+
+        /* ============================================================
+           BOOKMAP + FULLSCREEN MODE
+           ============================================================ */
+        .bookmap-panel { height: 460px; display: flex; flex-direction: column; }
+        #bookmap-container { flex: 1; width: 100%; min-height: 0; position: relative; }
+        #bookmap-container iframe { width: 100%; height: 100%; border: none; display: block; }
+
+        /* Native fullscreen state */
+        .bookmap-panel:fullscreen,
+        .bookmap-panel:-webkit-full-screen {
+            width: 100vw !important;
+            height: 100vh !important;
+            border-radius: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            margin: 0 !important;
+            background: var(--bg-panel);
+        }
+        .bookmap-panel:fullscreen #bookmap-container,
+        .bookmap-panel:-webkit-full-screen #bookmap-container {
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* CSS fallback for iOS Safari (no native fullscreen on non-video) */
+        .bookmap-panel.bookmap-fullscreen-fallback {
+            position: fixed !important;
+            top: 0 !important; left: 0 !important;
+            right: 0 !important; bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            height: 100dvh !important;
+            z-index: 9999 !important;
+            border-radius: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            margin: 0 !important;
+            background: var(--bg-panel);
+        }
+        body.bookmap-fs-active {
+            overflow: hidden !important;
+        }
+
+        .notes-tabs {
+            display: flex; gap: 2px; padding: 0 12px; background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border-subtle); overflow-x: auto;
+            scrollbar-width: none; flex-shrink: 0; -webkit-overflow-scrolling: touch;
+        }
+        .notes-tabs::-webkit-scrollbar { display: none; }
+        .notes-tab {
+            padding: 12px 14px; background: none; border: none; border-bottom: 2px solid transparent;
+            color: var(--text-secondary); font-family: var(--font-sans); font-size: var(--fs-sm);
+            font-weight: 600; cursor: pointer; white-space: nowrap;
+            transition: all 0.15s ease; display: inline-flex; align-items: center; gap: 6px;
+            min-height: 44px;
+        }
+        .notes-tab:hover { color: var(--text-primary); }
+        .notes-tab.active { color: var(--accent-cyan); border-bottom-color: var(--accent-cyan); }
+        html[data-theme="light"] .notes-tab.active { color: var(--accent-blue); border-bottom-color: var(--accent-blue); }
+        .notes-tab svg { width: 14px; height: 14px; flex-shrink: 0; }
+        .notes-content { padding: 20px 24px; min-height: 240px; }
+        .notes-content h4 {
+            font-family: var(--font-display); font-size: 1rem; font-weight: 700;
+            color: var(--text-primary); margin-bottom: 12px; letter-spacing: -0.01em;
+        }
+        .notes-content h4:not(:first-child) { margin-top: 18px; }
+        .notes-content p { font-size: var(--fs-sm); line-height: 1.65; color: var(--text-secondary); margin-bottom: 8px; }
+        .notes-content ul, .notes-content ol { padding-left: 22px; display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+        .notes-content li { font-size: var(--fs-sm); line-height: 1.6; color: var(--text-secondary); }
+        .notes-content li strong { color: var(--text-primary); font-weight: 600; }
+        .notes-content code {
+            font-family: var(--font-mono); font-size: 0.85em; background: var(--bg-elevated);
+            padding: 1px 5px; border-radius: 3px; color: var(--accent-cyan);
+            border: 1px solid var(--border-subtle); word-break: break-word;
+        }
+        .notes-content kbd {
+            display: inline-block; padding: 1px 7px; background: var(--bg-elevated);
+            border: 1px solid var(--border-strong); border-bottom-width: 2px;
+            border-radius: 4px; font-family: var(--font-mono); font-size: 11px;
+            color: var(--text-primary); font-weight: 600;
+        }
+        .notes-content .callout {
+            padding: 12px 14px; border-radius: 6px; margin: 10px 0;
+            font-size: var(--fs-sm); line-height: 1.6; color: var(--text-secondary);
+            border-left: 3px solid var(--accent-cyan); background: rgba(0, 212, 255, 0.06);
+        }
+        .notes-content .callout.warn { border-left-color: var(--accent-amber); background: rgba(210, 153, 34, 0.08); }
+        .notes-content .callout.danger { border-left-color: var(--accent-red); background: rgba(248, 81, 73, 0.08); }
+        .notes-content .callout strong { color: var(--text-primary); }
+        .notes-changelog-item {
+            padding: 10px 0; border-bottom: 1px solid var(--border-subtle);
+            display: flex; gap: 14px; font-size: var(--fs-sm); flex-wrap: wrap;
+        }
+        .notes-changelog-item:last-child { border-bottom: none; }
+        .notes-changelog-item .ver {
+            font-family: var(--font-mono); font-weight: 700; color: var(--accent-cyan);
+            min-width: 60px; flex-shrink: 0;
+        }
+        .notes-changelog-item .desc { color: var(--text-secondary); line-height: 1.5; flex: 1; min-width: 200px; }
+
+        .toast-container {
+            position: fixed; bottom: 24px; right: 24px; display: flex;
+            flex-direction: column; gap: 10px; z-index: 1000; pointer-events: none;
+        }
+        .toast {
+            padding: 12px 16px; background: var(--bg-elevated); border: 1px solid var(--border-strong);
+            border-left: 3px solid var(--accent-cyan); border-radius: 8px;
+            color: var(--text-primary); font-size: var(--fs-sm); font-weight: 500;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); pointer-events: auto;
+            animation: toast-in 0.35s cubic-bezier(0.4, 0, 0.2, 1); max-width: 340px;
+            display: flex; align-items: flex-start; gap: 10px; line-height: 1.45;
+        }
+        .toast.success { border-left-color: var(--accent-green); }
+        .toast.error { border-left-color: var(--accent-red); }
+        .toast.info { border-left-color: var(--accent-cyan); }
+        .toast.warn { border-left-color: var(--accent-amber); }
+        .toast svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; }
+        .toast.success svg { color: var(--accent-green); }
+        .toast.error svg { color: var(--accent-red); }
+        .toast.info svg { color: var(--accent-cyan); }
+        .toast.warn svg { color: var(--accent-amber); }
+        @keyframes toast-in { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+
+        .site-footer {
+            width: 100%; max-width: 1560px; margin-top: 30px; padding: 20px 28px;
+            border-top: 1px solid var(--border-subtle);
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 12px; font-size: 11px; color: var(--text-muted);
+            font-family: var(--font-mono);
+        }
+        .site-footer .foot-left { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        .site-footer .foot-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        .site-footer a { color: var(--accent-cyan); text-decoration: none; }
+        .site-footer a:hover { text-decoration: underline; }
+
+        .loading-skeleton {
+            padding: 20px; text-align: center; color: var(--text-muted);
+            font-family: var(--font-mono); font-size: var(--fs-sm); animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+        @media (max-width: 1200px) {
+            .chart-row { grid-template-columns: 1fr 300px; }
+            .tools-row { grid-template-columns: 1fr 1fr; }
+            .technical-analysis-panel { grid-column: span 2; }
+        }
+        @media (max-width: 1000px) {
+            .chart-row { grid-template-columns: 1fr; }
+            .sidebar-stack { flex-direction: row; height: auto; }
+            .derivatives-widget, .news-widget { flex: 1; min-height: 280px; }
+            .bottom-row { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 768px) {
+            .dashboard { padding: 0 16px; gap: 16px; }
+            header { padding: 14px 16px 8px; }
+            .chart-wrapper { height: clamp(350px, 55vh, 480px); }
+            .sidebar-stack { flex-direction: column; }
+            .tools-row { grid-template-columns: 1fr; }
+            .technical-analysis-panel { grid-column: span 1; }
+            .trade-panel { height: 340px; }
+            .calendar-panel { height: 380px; }
+            .bookmap-panel { height: 340px; }
+            .notes-content { padding: 16px 18px; }
+        }
+        @media (max-width: 600px) {
+            .dashboard { padding: 0 12px; gap: 14px; }
+            header {
+                flex-direction: column; align-items: stretch;
+                gap: 10px; padding: 14px 14px 8px;
+            }
+            .header-left, .header-right {
+                justify-content: space-between; width: 100%;
+            }
+            .ticker-bar { padding: 0 14px; height: 42px; }
+            .ticker-item { padding: 0 12px; }
+            .pulse-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+            .pulse-card { padding: 12px 14px; }
+            .pulse-card .pulse-value { font-size: 1.25rem; }
+            .panel-header { padding: 11px 14px; }
+            .trade-row {
+                grid-template-columns: 60px 40px minmax(74px, 1fr) minmax(52px, 1fr) minmax(72px, 1fr);
+                gap: 4px; padding: 6px 10px; font-size: 10.5px;
+            }
+            .notes-tab { padding: 11px 11px; font-size: 11px; gap: 4px; }
+            .notes-tab svg { width: 12px; height: 12px; }
+            .toast-container { left: 14px; right: 14px; bottom: 14px; }
+            .toast { max-width: 100%; }
+            .site-footer { padding: 16px 14px; }
+            .calc-field input { font-size: 16px; }
+        }
+        @media (max-width: 480px) {
+            .dashboard { padding: 0 10px; gap: 12px; }
+            .ticker-bar { padding: 0 10px; }
+            .ticker-item { padding: 0 9px; font-size: 11px; gap: 6px; }
+            .ticker-item .label { font-size: 9px; letter-spacing: 0.04em; }
+            .source-badge { display: none; }
+            #theme-label { display: none; }
+            .theme-toggle { padding: 7px 8px; }
+            header h1 { font-size: 0.95rem; }
+            .user-badge { font-size: 10px; padding: 3px 8px; }
+            .pulse-card .pulse-value { font-size: 1.1rem; }
+            .panel-header { font-size: 11px; letter-spacing: 0.01em; }
+            .panel-header .badge { font-size: 9px; padding: 1px 6px; }
+            .trade-row {
+                grid-template-columns: 50px 34px minmax(66px, 1fr) minmax(44px, 1fr) minmax(64px, 1fr);
+                gap: 3px; padding: 5px 8px; font-size: 10px;
+            }
+            .bookmap-panel { height: 300px; }
+            .calendar-panel { height: 360px; }
+            .trade-panel { height: 320px; }
+            .notes-content { padding: 14px 14px; }
+            .notes-content p, .notes-content li { font-size: 12.5px; }
+            .notes-content h4 { font-size: 0.95rem; }
+            .notes-changelog-item { gap: 8px; }
+            .notes-changelog-item .ver { min-width: 50px; font-size: 11px; }
+            .session-item { padding: 8px 10px; gap: 6px; }
+            .session-name { font-size: 12px; }
+            .session-status { font-size: 10px; }
+            .session-time { font-size: 9px; }
+            .calc-body { padding: 12px 12px; }
+            .site-footer { font-size: 10px; padding: 14px 12px; gap: 8px; }
+        }
+        @media (max-width: 380px) {
+            .dashboard { padding: 0 8px; gap: 10px; }
+            .ticker-item { padding: 0 7px; }
+            .icon-btn { padding: 6px 8px; height: 36px; min-width: 36px; }
+            .pulse-grid { gap: 8px; }
+            .pulse-card { padding: 10px 11px; }
+            .pulse-card .pulse-label { font-size: 10px; }
+            .pulse-card .pulse-value { font-size: 1.05rem; }
+            .trade-feed { overflow-x: auto; }
+            .trade-row {
+                min-width: 310px;
+                grid-template-columns: 46px 32px minmax(64px, 1fr) minmax(44px, 1fr) minmax(62px, 1fr);
+                gap: 3px; padding: 5px 8px; font-size: 9.5px;
+            }
+            .trade-row.header { min-width: 310px; }
+        }
+        @media (max-height: 500px) and (orientation: landscape) {
+            .chart-wrapper { height: 300px; }
+            .bookmap-panel { height: 260px; }
+            .trade-panel, .calendar-panel { height: 280px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="ticker-bar">
+        <div class="ticker-item">
+            <span class="label">BTC</span>
+            <span class="value" id="ticker-btc-price">—</span>
+            <span class="value" id="ticker-btc-change">—</span>
+            <span class="source-badge">Bitstamp · LIVE</span>
+        </div>
+        <div class="ticker-item"><span class="label">ETH</span><span class="value" id="ticker-eth-price">—</span></div>
+        <div class="ticker-item"><span class="label">SOL</span><span class="value" id="ticker-sol-price">—</span></div>
+        <div class="ticker-item"><span class="label">MCap</span><span class="value" id="ticker-mcap">—</span></div>
+        <div class="ticker-item"><span class="label">24h Vol</span><span class="value" id="ticker-volume">—</span></div>
+        <div class="ticker-item"><span class="label">BTC Dominance</span><span class="value accent" id="ticker-dominance">—</span></div>
+        <div class="ticker-item"><span class="label">Fear/Greed</span><span class="value" id="ticker-fng">—</span></div>
+    </div>
+
+    <header>
+        <div class="header-left">
+            <h1><span class="brand-mark">₿</span>BTC Terminal</h1>
+            <span class="user-badge">Private user: <span class="user-highlight">JEROME QUIZON TRD27</span></span>
+        </div>
+        <div class="header-right">
+            <div class="header-meta">
+                <span class="live-dot"></span>Live · <span id="ph-clock">—</span> PH
+            </div>
+            <button class="icon-btn" id="help-btn" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+            </button>
+            <button class="icon-btn theme-toggle" id="theme-toggle" type="button" title="Toggle light/dark (T)" aria-label="Toggle theme">
+                <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+                <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+                <span id="theme-label">Dark</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="dashboard">
+
+        <div class="pulse-grid">
+            <div class="pulse-card">
+                <span class="pulse-label">BTC / USD</span>
+                <span class="pulse-value" id="pulse-btc-price">—</span>
+                <span class="pulse-sub" id="pulse-btc-change">—</span>
+            </div>
+            <div class="pulse-card">
+                <span class="pulse-label">Market Cap</span>
+                <span class="pulse-value" id="pulse-mcap">—</span>
+                <span class="pulse-sub" id="pulse-mcap-change">—</span>
+            </div>
+            <div class="pulse-card">
+                <span class="pulse-label">24h Volume</span>
+                <span class="pulse-value" id="pulse-volume">—</span>
+                <span class="pulse-sub">Global spot</span>
+            </div>
+            <div class="pulse-card">
+                <span class="pulse-label">Fear & Greed</span>
+                <div class="fg-gauge-wrap">
+                    <div class="fg-bar"><div class="fg-indicator" id="fg-indicator" style="left:50%"></div></div>
+                    <span class="fg-value-big" id="pulse-fng">—</span>
+                </div>
+                <span class="pulse-sub" id="pulse-fng-label">—</span>
+            </div>
+        </div>
+
+        <div class="chart-row">
+            <div class="panel chart-wrapper">
+                <div class="panel-header">
+                    <span>BTC/USD — Advanced Chart</span>
+                    <span class="badge">TradingView</span>
+                </div>
+                <div class="tradingview-widget-container" id="tv-chart-container"></div>
+            </div>
+            <div class="sidebar-stack">
+                <div class="panel derivatives-widget">
+                    <div class="panel-header">
+                        <span>Derivatives — BTC Perp</span>
+                        <span class="badge">Binance</span>
+                    </div>
+                    <div class="derivatives-body" id="derivatives-body">
+                        <div class="loading-skeleton">Loading derivatives data…</div>
+                    </div>
+                </div>
+                <div class="panel news-widget">
+                    <div class="panel-header">
+                        <span>Market News</span>
+                        <span class="badge" id="news-count">—</span>
+                    </div>
+                    <div class="news-feed" id="news-feed">
+                        <div class="loading-skeleton">Loading headlines…</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tools-row">
+            <div class="panel">
+                <div class="panel-header">
+                    <span>Market Sessions</span>
+                    <span class="badge" id="sessions-badge">UTC</span>
+                </div>
+                <div class="sessions-body" id="sessions-list">
+                    <div class="loading-skeleton">Loading…</div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <span>Position Calculator</span>
+                    <span class="badge">BTC</span>
+                </div>
+                <div class="calc-body">
+                    <div class="calc-field">
+                        <label for="calc-balance">Account Balance (USDT)</label>
+                        <input type="number" id="calc-balance" value="10000" min="0" step="100" inputmode="decimal">
+                    </div>
+                    <div class="calc-field">
+                        <label for="calc-risk">Risk per Trade (%)</label>
+                        <input type="number" id="calc-risk" value="2" min="0" max="100" step="0.5" inputmode="decimal">
+                    </div>
+                    <div class="calc-field">
+                        <label for="calc-entry">Entry Price ($)</label>
+                        <input type="number" id="calc-entry" value="80000" min="0" step="100" inputmode="decimal">
+                    </div>
+                    <div class="calc-field">
+                        <label for="calc-stop">Stop Loss ($)</label>
+                        <input type="number" id="calc-stop" value="78000" min="0" step="100" inputmode="decimal">
+                    </div>
+                    <div class="calc-results" id="calc-results">
+                        <div class="calc-res-row"><span class="lbl">Risk Amount</span><span class="val red" id="calc-risk-amt">—</span></div>
+                        <div class="calc-res-row"><span class="lbl">Position Size</span><span class="val" id="calc-pos-size">—</span></div>
+                        <div class="calc-res-row"><span class="lbl">Position Value</span><span class="val" id="calc-pos-val">—</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel technical-analysis-panel">
+                <div class="panel-header">
+                    <span>Technical Analysis</span>
+                    <span class="badge">TradingView</span>
+                </div>
+                <div class="technical-analysis-container" id="technical-analysis-container"></div>
+            </div>
+        </div>
+
+        <div class="bottom-row">
+            <div class="panel trade-panel">
+                <div class="panel-header">
+                    <span>Large Trades — BTCUSDT &gt; $100K</span>
+                    <span class="badge">Live</span>
+                </div>
+                <div class="trade-feed-status">
+                    <span id="trade-status"><span class="dot connecting"></span>Connecting…</span>
+                    <span id="trade-count">0 trades</span>
+                </div>
+                <div class="trade-feed" id="trade-feed">
+                    <div class="trade-row header" id="trade-feed-header">
+                        <span>Time</span><span>Side</span><span>Price</span><span>Qty (BTC)</span><span>Notional</span>
+                    </div>
+                    <div class="trade-feed-empty" id="trade-empty">Waiting for large trades…</div>
+                </div>
+            </div>
+            <div class="panel calendar-panel">
+                <div class="panel-header">
+                    <span>High-Impact Economic Calendar (PH Time)</span>
+                    <span class="badge">TradingView</span>
+                </div>
+                <div class="calendar-widget-container" id="calendar-widget-container"></div>
+            </div>
+        </div>
+
+        <!-- BOOKMAP with fullscreen / landscape toggle -->
+        <div class="panel bookmap-panel" id="bookmap-panel">
+            <div class="panel-header">
+                <span>Liquidity Heatmap — BTC/USD Spot</span>
+                <div class="panel-header-actions">
+                    <span class="badge">Bookmap</span>
+                    <button class="panel-icon-btn" id="bookmap-fullscreen-btn" type="button"
+                            title="Fullscreen / Landscape (F)" aria-label="Toggle fullscreen landscape">
+                        <svg class="icon-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                        </svg>
+                        <svg class="icon-contract" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+                            <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div id="bookmap-container"></div>
+        </div>
+
+        <div class="panel" id="dev-notes">
+            <div class="panel-header">
+                <span>ⓘ Developer Notes & Reminders</span>
+                <span class="badge">Read Before Trading</span>
+            </div>
+            <div class="notes-tabs" role="tablist">
+                <button class="notes-tab active" data-tab="reminders" role="tab">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    Reminders
+                </button>
+                <button class="notes-tab" data-tab="howto" role="tab">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+                    How to Use
+                </button>
+                <button class="notes-tab" data-tab="sources" role="tab">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+                    Data Sources
+                </button>
+                <button class="notes-tab" data-tab="shortcuts" role="tab">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"></rect><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12"></path></svg>
+                    Shortcuts
+                </button>
+                <button class="notes-tab" data-tab="changelog" role="tab">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    Changelog
+                </button>
+                <button class="notes-tab" data-tab="disclaimer" role="tab">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                    Disclaimer
+                </button>
+            </div>
+            <div class="notes-content" id="notes-content"></div>
+        </div>
+
+    </div>
+
+    <footer class="site-footer">
+        <div class="foot-left">
+            <span>BTC Terminal · <span id="footer-version">v2.6.0</span></span>
+            <span>·</span>
+            <span>Built for <strong style="color: var(--accent-cyan)">JEROME QUIZON TRD27</strong></span>
+        </div>
+        <div class="foot-right">
+            <span id="footer-clock">—</span>
+            <span>·</span>
+            <span>Not financial advice</span>
+        </div>
+    </footer>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+
+    <script type="module">
+        import { createIframe } from 'https://esm.sh/@bookmap/bmmp-embed@1.0.1';
+        try {
+            createIframe({
+                url: 'https://embed.web.bookmap.com/',
+                container: document.querySelector('#bookmap-container'),
+                instrument: 'BTCUSD', width: '100%', height: '100%'
+            });
+        } catch (error) {
+            console.error('Bookmap embed failed:', error);
+            document.querySelector('#bookmap-container').innerHTML =
+                '<p style="padding:20px;color:var(--text-secondary);text-align:center;">Unable to load Bookmap heatmap.</p>';
+        }
+    </script>
+
+    <!-- ============================================================
+         BOOKMAP FULLSCREEN / LANDSCAPE TOGGLE
+         - Native Fullscreen API where supported
+         - CSS fallback for iOS Safari (no native fullscreen on div)
+         - Attempts landscape orientation lock on mobile
+         - Keyboard shortcut: F to toggle, Esc to exit
+         ============================================================ -->
+    <script>
+        (() => {
+            const panel = document.getElementById('bookmap-panel');
+            const btn = document.getElementById('bookmap-fullscreen-btn');
+            if (!panel || !btn) return;
+
+            const iconExpand = btn.querySelector('.icon-expand');
+            const iconContract = btn.querySelector('.icon-contract');
+
+            function updateIcon(isFull) {
+                if (iconExpand) iconExpand.style.display = isFull ? 'none' : '';
+                if (iconContract) iconContract.style.display = isFull ? '' : 'none';
+                btn.title = isFull ? 'Exit fullscreen (Esc or F)' : 'Fullscreen / Landscape (F)';
+                btn.setAttribute('aria-pressed', isFull ? 'true' : 'false');
+            }
+
+            function isNativeFull() {
+                return document.fullscreenElement === panel ||
+                       document.webkitFullscreenElement === panel;
+            }
+
+            function isFallbackFull() {
+                return panel.classList.contains('bookmap-fullscreen-fallback');
+            }
+
+            function isFull() { return isNativeFull() || isFallbackFull(); }
+
+            async function tryLandscapeLock() {
+                try {
+                    if (screen.orientation && typeof screen.orientation.lock === 'function') {
+                        await screen.orientation.lock('landscape');
+                    }
+                } catch (_) { /* not supported or permission denied — silent */ }
+            }
+
+            function unlockOrientation() {
+                try {
+                    if (screen.orientation && typeof screen.orientation.unlock === 'function') {
+                        screen.orientation.unlock();
+                    }
+                } catch (_) {}
+            }
+
+            async function enterFullscreen() {
+                // 1. Try native fullscreen first (best UX — hides browser chrome)
+                const req = panel.requestFullscreen || panel.webkitRequestFullscreen ||
+                            panel.mozRequestFullScreen || panel.msRequestFullscreen;
+                if (req) {
+                    try {
+                        await req.call(panel);
+                        await tryLandscapeLock();
+                        updateIcon(true);
+                        if (window.innerWidth <= 768 && window.innerHeight > window.innerWidth) {
+                            window.showToast?.('Rotate device to landscape for best view', 'info', 3000);
+                        }
+                        return;
+                    } catch (e) {
+                        console.warn('Native fullscreen failed, using CSS fallback:', e);
+                    }
+                }
+
+                // 2. CSS fallback (iOS Safari, restricted browsers)
+                panel.classList.add('bookmap-fullscreen-fallback');
+                document.body.classList.add('bookmap-fs-active');
+                await tryLandscapeLock();
+                updateIcon(true);
+                if (window.innerWidth <= 768 && window.innerHeight > window.innerWidth) {
+                    window.showToast?.('Rotate device to landscape for best view', 'info', 3000);
+                }
+            }
+
+            async function exitFullscreen() {
+                if (document.fullscreenElement || document.webkitFullscreenElement) {
+                    try {
+                        const exit = document.exitFullscreen || document.webkitExitFullscreen ||
+                                     document.mozCancelFullScreen || document.msExitFullscreen;
+                        if (exit) await exit.call(document);
+                    } catch (_) {}
+                }
+                panel.classList.remove('bookmap-fullscreen-fallback');
+                document.body.classList.remove('bookmap-fs-active');
+                unlockOrientation();
+                updateIcon(false);
+            }
+
+            function toggleFullscreen() {
+                if (isFull()) exitFullscreen();
+                else enterFullscreen();
+            }
+
+            btn.addEventListener('click', toggleFullscreen);
+
+            // Keep icon in sync when browser changes fullscreen state (e.g. Esc key)
+            document.addEventListener('fullscreenchange', () => updateIcon(isFull()));
+            document.addEventListener('webkitfullscreenchange', () => updateIcon(isFull()));
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                const tag = (e.target.tagName || '').toLowerCase();
+                if (tag === 'input' || tag === 'textarea') return;
+
+                if (e.key === 'Escape' && isFallbackFull()) {
+                    exitFullscreen();
+                } else if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    e.preventDefault();
+                    toggleFullscreen();
+                }
+            });
+
+            // Safety: if user resizes window back to portrait while in fallback fullscreen,
+            // keep it full — user can exit with Esc or the button
+        })();
+    </script>
+
+    <script>
+        (() => {
+            const THRESHOLD_USD = 100000, MAX_ROWS = 50;
+            const headerEl = document.getElementById('trade-feed-header');
+            const statusEl = document.getElementById('trade-status');
+            const countEl = document.getElementById('trade-count');
+            const emptyEl = document.getElementById('trade-empty');
+            const usdFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+            const priceFmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+            const qtyFmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 });
+            let ws = null, tradeCount = 0; const rows = [];
+            function setStatus(text, cls) { statusEl.innerHTML = `<span class="dot ${cls || ''}"></span>${text}`; }
+            function addTrade(data) {
+                const price = parseFloat(data.p), qty = parseFloat(data.q);
+                const notional = price * qty;
+                if (!Number.isFinite(notional) || notional < THRESHOLD_USD) return;
+                const isBuy = data.m === false;
+                const side = isBuy ? 'BUY' : 'SELL';
+                const time = new Date(data.T).toLocaleTimeString([], { hour12: false });
+                if (emptyEl && emptyEl.parentNode) emptyEl.remove();
+                const row = document.createElement('div');
+                row.className = 'trade-row';
+                row.innerHTML = `<span>${time}</span><span class="${isBuy ? 'side-buy' : 'side-sell'}">${side}</span><span>$${priceFmt.format(price)}</span><span>${qtyFmt.format(qty)}</span><span>${usdFmt.format(notional)}</span>`;
+                headerEl.insertAdjacentElement('afterend', row);
+                rows.unshift(row);
+                while (rows.length > MAX_ROWS) { const old = rows.pop(); if (old?.parentNode) old.remove(); }
+                tradeCount++; countEl.textContent = `${tradeCount} trade${tradeCount === 1 ? '' : 's'}`;
+            }
+            function connect() {
+                setStatus('Connecting…', 'connecting');
+                ws = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@aggTrade');
+                ws.onopen = () => setStatus('Connected — live aggTrade', 'connected');
+                ws.onmessage = (e) => { try { const d = JSON.parse(e.data); if (d.e === 'aggTrade') addTrade(d); } catch (_) {} };
+                ws.onclose = () => { setStatus('Reconnecting…', 'disconnected'); setTimeout(connect, 5000); };
+                ws.onerror = () => { setStatus('Error', 'disconnected'); try { ws.close(); } catch (_) {} };
+            }
+            connect();
+        })();
+    </script>
+
+    <script>
+        (() => {
+            const usd = (n, dec = 0) => n == null ? '—' : '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: dec });
+            const compact = (n) => n == null ? '—' : Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(n);
+            const pct = (n) => n == null ? '—' : (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+            const cls = (n) => n >= 0 ? 'positive' : 'negative';
+
+            let btcWS = null, lastBtc = null, btcOpen = null;
+            function setBtcPriceUI(price) {
+                const priceEl = document.getElementById('ticker-btc-price');
+                const changeEl = document.getElementById('ticker-btc-change');
+                const pPrice = document.getElementById('pulse-btc-price');
+                const pChange = document.getElementById('pulse-btc-change');
+                if (lastBtc !== null && price !== lastBtc) {
+                    const dir = price > lastBtc ? 'up' : 'down';
+                    priceEl.classList.remove('flash-up', 'flash-down');
+                    void priceEl.offsetWidth;
+                    priceEl.classList.add(dir === 'up' ? 'flash-up' : 'flash-down');
+                }
+                priceEl.textContent = usd(price, 2);
+                pPrice.textContent = usd(price, 2);
+                if (btcOpen) {
+                    const chg = ((price - btcOpen) / btcOpen) * 100;
+                    const str = pct(chg);
+                    changeEl.textContent = str;
+                    changeEl.className = 'value ' + (chg >= 0 ? 'up' : 'down');
+                    pChange.textContent = str;
+                    pChange.className = 'pulse-sub ' + cls(chg);
+                }
+                lastBtc = price;
+            }
+            async function initBitstampWS() {
+                try {
+                    const r = await fetch('https://www.bitstamp.net/api/v2/ticker/btcusd/');
+                    const t = await r.json();
+                    btcOpen = parseFloat(t.open);
+                    if (t.last) { const p = parseFloat(t.last); if (Number.isFinite(p)) setBtcPriceUI(p); }
+                } catch (e) { console.warn('Bitstamp REST failed:', e); }
+                function connectWS() {
+                    btcWS = new WebSocket('wss://ws.bitstamp.net');
+                    btcWS.onopen = () => btcWS.send(JSON.stringify({ event: 'bts:subscribe', data: { channel: 'live_trades_btcusd' } }));
+                    btcWS.onmessage = (ev) => {
+                        try {
+                            const m = JSON.parse(ev.data);
+                            if (m.event === 'trade' && m.data && m.data.price) {
+                                const p = parseFloat(m.data.price);
+                                if (Number.isFinite(p)) setBtcPriceUI(p);
+                            }
+                        } catch (_) {}
+                    };
+                    btcWS.onclose = () => setTimeout(connectWS, 3000);
+                    btcWS.onerror = () => { try { btcWS.close(); } catch (_) {} };
+                }
+                connectWS();
+            }
+
+            async function loadGlobalData() {
+                try {
+                    const [pR, gR] = await Promise.all([
+                        fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum,solana&vs_currencies=usd'),
+                        fetch('https://api.coingecko.com/api/v3/global')
+                    ]);
+                    const p = await pR.json(); const g = (await gR.json()).data;
+                    const eth = p.ethereum || {}, sol = p.solana || {};
+                    document.getElementById('ticker-eth-price').textContent = usd(eth.usd, 0);
+                    document.getElementById('ticker-sol-price').textContent = usd(sol.usd, 0);
+                    document.getElementById('ticker-mcap').textContent = compact(g.total_market_cap?.usd);
+                    document.getElementById('ticker-volume').textContent = compact(g.total_volume?.usd);
+                    document.getElementById('ticker-dominance').textContent = (g.market_cap_percentage?.btc || 0).toFixed(1) + '%';
+                    document.getElementById('pulse-mcap').textContent = compact(g.total_market_cap?.usd);
+                    const pM = document.getElementById('pulse-mcap-change');
+                    const mch = g.market_cap_change_percentage_24h_usd || 0;
+                    pM.textContent = pct(mch); pM.className = 'pulse-sub ' + cls(mch);
+                    document.getElementById('pulse-volume').textContent = compact(g.total_volume?.usd);
+                } catch (e) { console.warn('Global failed:', e); }
+            }
+
+            async function loadFearGreed() {
+                try {
+                    const r = await fetch('https://api.alternative.me/fng/?limit=1');
+                    const j = await r.json(); const item = j.data?.[0];
+                    if (!item) return;
+                    const val = parseInt(item.value, 10);
+                    document.getElementById('ticker-fng').textContent = val;
+                    document.getElementById('pulse-fng').textContent = val;
+                    document.getElementById('pulse-fng-label').textContent = item.value_classification || '—';
+                    document.getElementById('fg-indicator').style.left = Math.min(Math.max(val, 0), 100) + '%';
+                    const big = document.getElementById('pulse-fng');
+                    if (val <= 25) big.style.color = 'var(--accent-red)';
+                    else if (val <= 45) big.style.color = 'var(--accent-amber)';
+                    else if (val <= 60) big.style.color = 'var(--text-primary)';
+                    else if (val <= 75) big.style.color = 'var(--accent-green)';
+                    else big.style.color = 'var(--accent-cyan)';
+                } catch (e) { console.warn('FNG failed:', e); }
+            }
+
+            async function loadDerivatives() {
+                const body = document.getElementById('derivatives-body');
+                try {
+                    const [fR, oR] = await Promise.all([
+                        fetch('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT'),
+                        fetch('https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT')
+                    ]);
+                    const f = await fR.json(), o = await oR.json();
+                    const fr = parseFloat(f.lastFundingRate) * 100;
+                    const mp = parseFloat(f.markPrice);
+                    const oi = parseFloat(o.openInterest);
+                    body.innerHTML = `
+                        <div class="metric-row"><span class="metric-name">Funding Rate (8h)</span><span class="metric-val ${fr >= 0 ? 'green' : 'red'}">${fr.toFixed(4)}%</span></div>
+                        <div class="metric-row"><span class="metric-name">Open Interest</span><span class="metric-val">${oi.toLocaleString('en-US', { maximumFractionDigits: 0 })} BTC</span></div>
+                        <div class="metric-row"><span class="metric-name">OI Notional</span><span class="metric-val">${compact(oi * mp)}</span></div>
+                        <div class="metric-row"><span class="metric-name">Mark Price</span><span class="metric-val">${usd(mp, 0)}</span></div>
+                    `;
+                } catch (e) {
+                    body.innerHTML = '<div class="loading-skeleton">Derivatives data unavailable</div>';
+                }
+            }
+
+            async function loadNews() {
+                const feed = document.getElementById('news-feed');
+                try {
+                    const r = await fetch('https://cryptocurrency.cv/api/news?limit=12');
+                    const j = await r.json();
+                    const list = j.articles || j.data || j || [];
+                    if (!Array.isArray(list) || !list.length) { feed.innerHTML = '<div class="loading-skeleton">No news available</div>'; return; }
+                    document.getElementById('news-count').textContent = list.length + ' articles';
+                    feed.innerHTML = list.slice(0, 12).map(a => {
+                        const t = a.title || a.headline || 'Untitled';
+                        const s = a.source || a.domain || '';
+                        const u = a.url || a.link || '#';
+                        const d = a.published_at || a.date || '';
+                        return `<a class="news-item" href="${u}" target="_blank" rel="noopener">
+                            <div class="news-title">${esc(t)}</div>
+                            <div class="news-meta">${s ? `<span class="news-source">${esc(s)}</span>` : ''}${d ? `<span>${ago(d)}</span>` : ''}</div>
+                        </a>`;
+                    }).join('');
+                } catch (e) { feed.innerHTML = '<div class="loading-skeleton">Unable to load news</div>'; }
+            }
+            function ago(iso) {
+                const d = Date.now() - new Date(iso).getTime();
+                const m = Math.floor(d / 60000);
+                if (m < 1) return 'just now';
+                if (m < 60) return m + 'm ago';
+                const h = Math.floor(m / 60);
+                if (h < 24) return h + 'h ago';
+                return Math.floor(h / 24) + 'd ago';
+            }
+            function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+            function updateClock() {
+                const ph = new Date().toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                const el = document.getElementById('ph-clock'); if (el) el.textContent = ph;
+                const fEl = document.getElementById('footer-clock');
+                if (fEl) fEl.textContent = new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) + ' PH';
+            }
+
+            function getTheme() { return document.documentElement.getAttribute('data-theme') || 'dark'; }
+            function getTvTheme() { return getTheme() === 'light' ? 'light' : 'Dark'; }
+            function getTvBg() { return getTheme() === 'light' ? '#f6f8fa' : '#0d1117'; }
+
+            let tvRetries = 0;
+            function renderTradingViewChart() {
+                const container = document.getElementById('tv-chart-container');
+                if (!container) return;
+                container.innerHTML = `
+                    <div class="tradingview-widget-container__widget"></div>
+                    <div class="tradingview-widget-copyright">
+                        <a href="https://www.tradingview.com/symbols/BTCUSD/?exchange=BITSTAMP" rel="noopener nofollow" target="_blank">Bitcoin price</a> by TradingView
+                    </div>
+                `;
+                if (typeof TradingView === 'undefined' || !TradingView.widget) {
+                    tvRetries++;
+                    if (tvRetries < 20) setTimeout(renderTradingViewChart, 250);
+                    return;
+                }
+                try {
+                    new TradingView.widget({
+                        "container_id": "tv-chart-container", "autosize": true,
+                        "symbol": "BITSTAMP:BTCUSD", "interval": "D", "timezone": "Etc/UTC",
+                        "theme": getTvTheme(), "style": "1", "locale": "en",
+                        "toolbar_bg": getTvBg(), "enable_publishing": false,
+                        "allow_symbol_change": true, "hideideas": true, "withdateranges": true,
+                        "studies": ["RSI@tv-basicstudies", "MASimple@tv-basicstudies"]
+                    });
+                } catch (e) { console.warn('TV init failed:', e); }
+            }
+
+            function renderCalendar() {
+                const container = document.getElementById('calendar-widget-container');
+                if (!container) return;
+                container.innerHTML = '';
+                const iframe = document.createElement('iframe');
+                iframe.style.width = '100%'; iframe.style.height = '100%';
+                iframe.style.border = 'none'; iframe.setAttribute('frameborder', '0');
+                const params = new URLSearchParams({
+                    showHighImportanceOnly: 'true', timezone: 'Asia/Manila',
+                    theme: getTheme() === 'light' ? 'light' : 'dark', locale: 'en',
+                    utm_source: 'btc-terminal', utm_medium: 'widget', utm_campaign: 'economic-calendar'
+                });
+                iframe.src = `https://www.tradingview.com/embed-widget/events/?${params.toString()}`;
+                container.appendChild(iframe);
+            }
+
+            function renderTechnicalAnalysis() {
+                const container = document.getElementById('technical-analysis-container');
+                if (!container) return;
+                container.innerHTML = '';
+                const script = document.createElement('script');
+                script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-technical-analysis.js';
+                script.async = true;
+                script.innerHTML = JSON.stringify({
+                    "interval": "1D",
+                    "width": "100%",
+                    "height": "100%",
+                    "symbol": "BITSTAMP:BTCUSD",
+                    "showIntervalTabs": true,
+                    "displayMode": "single",
+                    "locale": "en",
+                    "colorTheme": getTheme() === 'light' ? 'light' : 'dark',
+                    "isTransparent": true
+                });
+                container.appendChild(script);
+            }
+
+            const toggleBtn = document.getElementById('theme-toggle');
+            const themeLabel = document.getElementById('theme-label');
+            function syncThemeLabel() { if (themeLabel) themeLabel.textContent = getTheme() === 'light' ? 'Light' : 'Dark'; }
+            syncThemeLabel();
+            function toggleTheme() {
+                const next = getTheme() === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', next);
+                try { localStorage.setItem('btc-terminal-theme', next); } catch (e) {}
+                syncThemeLabel();
+                renderTradingViewChart();
+                renderCalendar();
+                renderTechnicalAnalysis();
+                showToast(`Theme switched to ${next} mode`, 'success');
+            }
+            if (toggleBtn) toggleBtn.addEventListener('click', toggleTheme);
+
+            function showToast(message, type = 'info', duration = 3500) {
+                const container = document.getElementById('toast-container');
+                if (!container) return;
+                const toast = document.createElement('div');
+                toast.className = 'toast ' + type;
+                const icons = {
+                    success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>',
+                    error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>',
+                    info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>',
+                    warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>'
+                };
+                toast.innerHTML = (icons[type] || icons.info) + `<span>${message}</span>`;
+                container.appendChild(toast);
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateX(40px)';
+                    toast.style.transition = 'all 0.3s ease';
+                    setTimeout(() => toast.remove(), 300);
+                }, duration);
+            }
+            window.showToast = showToast;
+
+            function formatDur(hours) {
+                if (hours < 0) hours += 24;
+                const h = Math.floor(hours);
+                const m = Math.round((hours - h) * 60);
+                if (h === 0) return `${m}m`;
+                return `${h}h ${m}m`;
+            }
+            function updateSessions() {
+                const now = new Date();
+                const utcH = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
+                const sessions = [
+                    { name: '🇦🇺 Sydney', open: 22, close: 7 },
+                    { name: '🇯🇵 Tokyo', open: 0, close: 9 },
+                    { name: '🇬🇧 London', open: 8, close: 17 },
+                    { name: '🇺🇸 New York', open: 13, close: 22 }
+                ];
+                const html = sessions.map(s => {
+                    let isOpen, hrsOpen, hrsClose;
+                    if (s.open < s.close) {
+                        isOpen = utcH >= s.open && utcH < s.close;
+                        if (isOpen) hrsClose = s.close - utcH;
+                        else hrsOpen = utcH < s.open ? s.open - utcH : 24 - utcH + s.open;
+                    } else {
+                        isOpen = utcH >= s.open || utcH < s.close;
+                        if (isOpen) hrsClose = utcH >= s.open ? 24 - utcH + s.close : s.close - utcH;
+                        else hrsOpen = s.open - utcH;
+                    }
+                    const status = isOpen ? `OPEN · ${formatDur(hrsClose)} left` : `Opens in ${formatDur(hrsOpen)}`;
+                    const range = `${String(s.open).padStart(2, '0')}:00–${String(s.close).padStart(2, '0')}:00 UTC`;
+                    return `<div class="session-item ${isOpen ? 'open' : ''}">
+                        <div>
+                            <div class="session-name">${s.name}</div>
+                            <div class="session-time">${range}</div>
+                        </div>
+                        <div class="session-status ${isOpen ? 'open' : 'closed'}">${status}</div>
+                    </div>`;
+                }).join('');
+                const container = document.getElementById('sessions-list');
+                if (container) container.innerHTML = html;
+            }
+            updateSessions();
+            setInterval(updateSessions, 1000);
+
+            function updateCalc() {
+                const balance = parseFloat(document.getElementById('calc-balance').value) || 0;
+                const riskPct = parseFloat(document.getElementById('calc-risk').value) || 0;
+                const entry = parseFloat(document.getElementById('calc-entry').value) || 0;
+                const stop = parseFloat(document.getElementById('calc-stop').value) || 0;
+                const riskAmt = balance * (riskPct / 100);
+                const riskPerUnit = Math.abs(entry - stop);
+                const posSize = riskPerUnit > 0 ? riskAmt / riskPerUnit : 0;
+                const posVal = posSize * entry;
+                const riskAmtEl = document.getElementById('calc-risk-amt');
+                const posSizeEl = document.getElementById('calc-pos-size');
+                const posValEl = document.getElementById('calc-pos-val');
+                if (riskAmtEl) riskAmtEl.textContent = usd(riskAmt, 2);
+                if (posSizeEl) posSizeEl.textContent = posSize.toFixed(4) + ' BTC';
+                if (posValEl) posValEl.textContent = usd(posVal, 2);
+            }
+            ['calc-balance', 'calc-risk', 'calc-entry', 'calc-stop'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('input', updateCalc);
+            });
+            updateCalc();
+
+            const NOTES = {
+                reminders: `
+                    <h4>⚠️ Important Reminders Before You Trade</h4>
+                    <div class="callout danger">
+                        <strong>Not Financial Advice.</strong> This terminal is an informational and educational tool only. Nothing on this dashboard constitutes financial, investment, or trading advice. Always do your own research (DYOR) and consult a licensed professional before making any trading decisions.
+                    </div>
+                    <div class="callout warn">
+                        <strong>Risk Warning.</strong> Cryptocurrency and derivatives trading involves substantial risk of loss. Prices can move violently within seconds. Never risk more than you can afford to lose, and never trade with borrowed money you cannot repay.
+                    </div>
+                    <ul>
+                        <li><strong>Data latency:</strong> Even with WebSocket feeds, prices can lag by 100–500ms. Always confirm fills on your exchange before acting.</li>
+                        <li><strong>Funding rate is live:</strong> A positive rate means longs pay shorts; a negative rate means shorts pay longs. Extreme values often precede liquidation cascades.</li>
+                        <li><strong>Large trade feed is filtered:</strong> Only Binance BTCUSDT aggregated trades above $100,000 appear. Illiquid venues and spot may diverge.</li>
+                        <li><strong>Calendar shows high-impact events only:</strong> Medium/low-impact events are filtered out. Trading through red-folder news without a plan is a common source of losses.</li>
+                        <li><strong>Do not chase pumps.</strong> Wait for confirmation. Preserve capital first, profit second.</li>
+                    </ul>
+                `,
+                howto: `
+                    <h4>📖 How to Use This Terminal</h4>
+                    <ol>
+                        <li><strong>Ticker Bar (top):</strong> Live BTC from Bitstamp WebSocket, plus ETH, SOL, market cap, volume, BTC dominance, and Fear & Greed.</li>
+                        <li><strong>Market Pulse:</strong> Quick at-a-glance metrics including BTC price, total market cap, 24h volume, and the Fear & Greed gauge.</li>
+                        <li><strong>Advanced Chart:</strong> Full TradingView chart with RSI and moving average overlays. Fully interactive — change timeframes and indicators.</li>
+                        <li><strong>Derivatives Panel:</strong> Real-time funding rate, open interest in BTC and USD, and the perpetual mark price from Binance Futures.</li>
+                        <li><strong>Market News:</strong> Aggregated headlines from 300+ crypto sources, updated every 3 minutes.</li>
+                        <li><strong>Market Sessions:</strong> Live clock showing which of the four major FX sessions are open, with countdowns to the next open or close.</li>
+                        <li><strong>Position Calculator:</strong> Enter balance, risk %, entry, and stop loss to instantly size your position. Ensures disciplined risk management on every trade.</li>
+                        <li><strong>Technical Analysis:</strong> TradingView's official gauge showing the current Strong Buy / Strong Sell rating backed by oscillators and moving averages.</li>
+                        <li><strong>Large Trades:</strong> Real-time whale trade feed — every Binance BTCUSDT aggregate trade above $100K.</li>
+                        <li><strong>Economic Calendar:</strong> High-impact events only (CPI, NFP, FOMC, etc.) in Philippine Time.</li>
+                        <li><strong>Liquidity Heatmap:</strong> Bookmap visualization of resting liquidity. Tap the ⛶ expand icon (or press <kbd>F</kbd>) to open it in fullscreen landscape mode for detailed order book analysis.</li>
+                    </ol>
+                `,
+                sources: `
+                    <h4>🔌 Data Sources & Refresh Rates</h4>
+                    <ul>
+                        <li><strong>BTC Price:</strong> Bitstamp WebSocket <code>live_trades_btcusd</code> — real-time, tick-by-tick (same feed as the TradingView chart).</li>
+                        <li><strong>ETH / SOL / MCap / Volume:</strong> CoinGecko public API — refreshed every 60 seconds.</li>
+                        <li><strong>Fear & Greed:</strong> Alternative.me API — refreshed every 60 seconds.</li>
+                        <li><strong>Funding / Open Interest:</strong> Binance Futures public API — refreshed every 30 seconds.</li>
+                        <li><strong>Large Trades:</strong> Binance WebSocket <code>btcusdt@aggTrade</code> — real-time.</li>
+                        <li><strong>Chart:</strong> TradingView embed (BITSTAMP:BTCUSD) — real-time.</li>
+                        <li><strong>Technical Analysis:</strong> TradingView Technical Analysis widget — live gauge with oscillators and moving averages.</li>
+                        <li><strong>Calendar:</strong> TradingView Economic Calendar widget — auto-refreshing.</li>
+                        <li><strong>Heatmap:</strong> Bookmap embed — real-time, with fullscreen toggle.</li>
+                        <li><strong>News:</strong> cryptocurrency.cv aggregator — refreshed every 3 minutes.</li>
+                        <li><strong>Sessions:</strong> Computed client-side from UTC — updated every second.</li>
+                    </ul>
+                    <div class="callout info"><strong>All APIs are free and keyless.</strong> No account or API key required for any of them.</div>
+                `,
+                shortcuts: `
+                    <h4>⌨️ Keyboard Shortcuts</h4>
+                    <ul>
+                        <li><kbd>T</kbd> — Toggle light / dark theme</li>
+                        <li><kbd>R</kbd> — Refresh all market data</li>
+                        <li><kbd>F</kbd> — Toggle Bookmap fullscreen (landscape on mobile)</li>
+                        <li><kbd>?</kbd> — Show this shortcut help</li>
+                        <li><kbd>N</kbd> — Scroll to developer notes</li>
+                        <li><kbd>Esc</kbd> — Exit Bookmap fullscreen / dismiss toasts</li>
+                    </ul>
+                    <div class="callout info"><strong>Tip:</strong> Shortcuts are disabled while typing in the position calculator — just click outside the input to re-enable.</div>
+                `,
+                changelog: `
+                    <h4>📝 Changelog</h4>
+                    <div class="notes-changelog-item"><span class="ver">v2.6.0</span><span class="desc">Added Bookmap fullscreen / landscape mode: tap the ⛶ button or press F. Native Fullscreen API is used where available; CSS fallback covers iOS Safari. On mobile, attempts to lock screen orientation to landscape so the heatmap fills the entire display.</span></div>
+                    <div class="notes-changelog-item"><span class="ver">v2.5.0</span><span class="desc">Fully responsive across desktop, tablet, and all phone sizes including Galaxy Fold. Added iOS text-size-adjust, touch-action, momentum scrolling, and input font-size fixes. Theme-color meta added for mobile browser chrome.</span></div>
+                    <div class="notes-changelog-item"><span class="ver">v2.4.0</span><span class="desc">Replaced Quick Links with TradingView's official Technical Analysis widget — live Strong Buy / Strong Sell gauge backed by oscillators and moving averages.</span></div>
+                    <div class="notes-changelog-item"><span class="ver">v2.3.0</span><span class="desc">Added Developer Notes section, Market Sessions clock, Position Calculator, Quick Links, toast notifications, keyboard shortcuts, footer with version info.</span></div>
+                    <div class="notes-changelog-item"><span class="ver">v2.2.0</span><span class="desc">Fixed TradingView chart positioning — now renders reliably in its panel using explicit container_id. Added autosize hardening.</span></div>
+                    <div class="notes-changelog-item"><span class="ver">v2.1.0</span><span class="desc">Dark/light theme toggle with professional SVG icons. Theme persists via localStorage and respects OS preference.</span></div>
+                    <div class="notes-changelog-item"><span class="ver">v2.0.0</span><span class="desc">Professional redesign: market pulse cards, derivatives widget, news feed, ticker bar, Fear & Greed gauge.</span></div>
+                    <div class="notes-changelog-item"><span class="ver">v1.0.0</span><span class="desc">Initial release: TradingView chart, Bookmap heatmap, Binance large-trade WebSocket feed, TradingView economic calendar.</span></div>
+                `,
+                disclaimer: `
+                    <h4>⚖️ Disclaimer</h4>
+                    <div class="callout danger">
+                        <strong>Trading is risky.</strong> Most retail traders lose money. The developer of this terminal is not a licensed financial advisor, and the information presented here is for personal educational use only. Do not interpret anything on this dashboard as a recommendation to buy, sell, or hold any asset.
+                    </div>
+                    <p><strong>Third-party data.</strong> All market data, prices, charts, calendars, technical analysis, and news displayed here are provided by third parties (Bitstamp, Binance, CoinGecko, Alternative.me, TradingView, Bookmap, cryptocurrency.cv). The developer makes no guarantees about their accuracy, completeness, or timeliness, and is not responsible for any errors or omissions.</p>
+                    <p><strong>No liability.</strong> By using this dashboard, you agree that the developer and any affiliates are not liable for any trading losses, missed opportunities, data outages, or other damages arising from its use.</p>
+                    <p><strong>Trademarks.</strong> Bitcoin, TradingView, Binance, Bitstamp, Bookmap, CoinGecko, Forex Factory, and all other names and logos are the property of their respective owners. This dashboard is an independent, personal tool — it is not affiliated with, endorsed by, or sponsored by any of these companies.</p>
+                    <p><strong>Personal build.</strong> This terminal was built specifically for <strong>JEROME QUIZON TRD27</strong>. If you are viewing this on a shared computer, be sure to log out of any exchange accounts and close the browser when finished.</p>
+                    <div class="callout info">Questions or feedback? Reach out to the developer directly. Version <code>v2.6.0</code> — last updated November 2025.</div>
+                `
+            };
+            function renderNotes(tab) {
+                const content = document.getElementById('notes-content');
+                if (content) content.innerHTML = NOTES[tab] || NOTES.reminders;
+                document.querySelectorAll('.notes-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+            }
+            document.querySelectorAll('.notes-tab').forEach(tab => {
+                tab.addEventListener('click', () => renderNotes(tab.dataset.tab));
+            });
+            renderNotes('reminders');
+
+            document.addEventListener('keydown', (e) => {
+                const tag = (e.target.tagName || '').toLowerCase();
+                if (tag === 'input' || tag === 'textarea') return;
+                if (e.key === 't' || e.key === 'T') { e.preventDefault(); toggleTheme(); }
+                else if (e.key === 'r' || e.key === 'R') {
+                    e.preventDefault();
+                    loadGlobalData(); loadFearGreed(); loadDerivatives(); loadNews();
+                    showToast('Refreshing all data…', 'info', 2000);
+                }
+                else if (e.key === '?') {
+                    e.preventDefault();
+                    showToast('T: theme · R: refresh · F: Bookmap fullscreen · N: notes · Esc: exit/dismiss', 'info', 5000);
+                }
+                else if (e.key === 'n' || e.key === 'N') {
+                    e.preventDefault();
+                    document.getElementById('dev-notes')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                else if (e.key === 'Escape') {
+                    document.querySelectorAll('.toast').forEach(t => t.remove());
+                }
+            });
+
+            document.getElementById('help-btn')?.addEventListener('click', () => {
+                showToast('Shortcuts — T: theme · R: refresh · F: Bookmap fullscreen · N: notes · Esc: exit/dismiss', 'info', 5000);
+            });
+
+            initBitstampWS();
+            loadGlobalData();
+            loadFearGreed();
+            loadDerivatives();
+            loadNews();
+            updateClock();
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                renderTradingViewChart();
+                renderCalendar();
+                renderTechnicalAnalysis();
+            }));
+            setInterval(updateClock, 1000);
+            setInterval(() => { loadGlobalData(); loadFearGreed(); }, 60000);
+            setInterval(loadDerivatives, 30000);
+            setInterval(loadNews, 180000);
+        })();
+    </script>
+
+</body>
+</html>
